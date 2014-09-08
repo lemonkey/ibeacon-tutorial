@@ -10,6 +10,10 @@
 #import "IMViewController.h"
 #import <CoreLocation/CoreLocation.h>
 
+@interface IMAppDelegate ()
+@property (nonatomic, strong) NSString *lastMessage;
+@end
+
 @implementation IMAppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
@@ -49,7 +53,12 @@
     [self.locationManager startMonitoringForRegion:beaconRegion];
     [self.locationManager startRangingBeaconsInRegion:beaconRegion];
     [self.locationManager startUpdatingLocation];
-    
+
+	// ask for permission for local notifications
+	if([application respondsToSelector:@selector(registerUserNotificationSettings:)]) {
+		[application registerUserNotificationSettings:[UIUserNotificationSettings settingsForTypes:UIUserNotificationTypeAlert|UIUserNotificationTypeBadge|UIUserNotificationTypeSound categories:nil]];
+	}
+
     return YES;
 }
 
@@ -58,7 +67,7 @@
     [self.locationManager startUpdatingLocation];
     
     NSLog(@"You entered the region.");
-    [self sendLocalNotificationWithMessage:@"You entered the region."];
+    [self sendLocalNotificationWithMessage:@"You entered the region." withSound:NO];
 }
 
 -(void)locationManager:(CLLocationManager *)manager didExitRegion:(CLRegion *)region {
@@ -66,13 +75,35 @@
     [self.locationManager stopUpdatingLocation];
     
     NSLog(@"You exited the region.");
-    [self sendLocalNotificationWithMessage:@"You exited the region."];
+    [self sendLocalNotificationWithMessage:@"You exited the region." withSound:NO];
 }
 
--(void)sendLocalNotificationWithMessage:(NSString*)message {
-    UILocalNotification *notification = [[UILocalNotification alloc] init];
-    notification.alertBody = message;
-    [[UIApplication sharedApplication] scheduleLocalNotification:notification];
+-(void)sendLocalNotificationWithMessage:(NSString*)message withSound:(BOOL)withSound {
+	BOOL allowsLocationNotifications = YES;
+	
+	if([[UIApplication sharedApplication] respondsToSelector:@selector(currentUserNotificationSettings)]) {
+		if(([UIApplication sharedApplication].currentUserNotificationSettings.types | UIUserNotificationTypeNone) == UIUserNotificationTypeNone) {
+			allowsLocationNotifications = NO;
+		}
+	}
+	
+	if(allowsLocationNotifications) {
+		UILocalNotification *notification = [[UILocalNotification alloc] init];
+		notification.alertBody = message;
+		
+		if(withSound) {
+			// classic star trek communicator beep
+			//	http://www.trekcore.com/audio/
+			//
+			// note: convert mp3 and wav formats into caf using:
+			//	"afconvert -f caff -d LEI16@44100 -c 1 in.wav out.caf"
+			// http://stackoverflow.com/a/10388263
+			
+			notification.soundName = @"tos_beep.caf";
+		}
+
+		[[UIApplication sharedApplication] scheduleLocalNotification:notification];
+	}
 }
 
 -(void)locationManager:(CLLocationManager *)manager didRangeBeacons:(NSArray *)beacons inRegion:(CLBeaconRegion *)region {
@@ -81,7 +112,9 @@
     IMViewController *viewController = (IMViewController*)self.window.rootViewController;
     viewController.beacons = beacons;
     [viewController.tableView reloadData];
-    
+	
+	BOOL notifyWithSound = NO;
+	
     if(beacons.count > 0) {
         CLBeacon *nearestBeacon = beacons.firstObject;
         if(nearestBeacon.proximity == self.lastProximity ||
@@ -93,6 +126,7 @@
         switch(nearestBeacon.proximity) {
             case CLProximityFar:
                 message = @"You are far away from the beacon";
+				notifyWithSound = YES;
                 break;
             case CLProximityNear:
                 message = @"You are near the beacon";
@@ -106,9 +140,15 @@
     } else {
         message = @"No beacons are nearby";
     }
-    
+	
     NSLog(@"%@", message);
-    [self sendLocalNotificationWithMessage:message];
+	
+	// to avoid spamming notifications, only send notification if the message has changed
+	if(![message isEqualToString:self.lastMessage]) {
+		[self sendLocalNotificationWithMessage:message withSound:notifyWithSound];
+	}
+	
+	self.lastMessage = message;
 }
 
 - (void)applicationWillResignActive:(UIApplication *)application
