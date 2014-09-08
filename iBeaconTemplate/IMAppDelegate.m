@@ -126,6 +126,8 @@
         switch(nearestBeacon.proximity) {
             case CLProximityFar:
                 message = @"You are far away from the beacon";
+				
+				// play alert sound if user is now far away from beacon
 				notifyWithSound = YES;
                 break;
             case CLProximityNear:
@@ -139,6 +141,9 @@
         }
     } else {
         message = @"No beacons are nearby";
+		
+		// play alert sound if user became out of range of beacon
+		notifyWithSound = YES;
     }
 	
     NSLog(@"%@", message);
